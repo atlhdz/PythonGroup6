@@ -1,1 +1,1 @@
-# PythonGroup6
+This is a mood tracker and a journal combined. 
