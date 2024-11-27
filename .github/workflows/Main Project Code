@@ -1,1 +1,262 @@
+import tkinter as tk
+from tkinter import messagebox, simpledialog
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from datetime import datetime
+import os
 
+# Global variables
+users_data = {}
+current_user = None
+entries_data = {}
+
+def save_user_data():
+    """Save user data to a file."""
+    with open('users_data.txt', 'w') as file:
+        for username, password in users_data.items():
+            file.write(f"{username},{password}\n")
+
+def load_user_data():
+    """Load user data from a file."""
+    if os.path.exists('users_data.txt'):
+        with open('users_data.txt', 'r') as file:
+            for line in file:
+                username, password = line.strip().split(',')
+                users_data[username] = password
+
+def save_entries_data():
+    """Save diary entries to a file."""
+    with open('entries_data.txt', 'w') as file:
+        for username, entries in entries_data.items():
+            for entry in entries:
+                file.write(f"{username},{entry['date']},{entry['mood']},{entry['notes']}\n")
+
+def load_entries_data():
+    """Load diary entries from a file."""
+    if os.path.exists('entries_data.txt'):
+        with open('entries_data.txt', 'r') as file:
+            for line in file:
+                username, date, mood, notes = line.strip().split(',')
+                if username not in entries_data:
+                    entries_data[username] = []
+                entries_data[username].append({'date': date, 'mood': int(mood), 'notes': notes})
+
+def on_register():
+    """Handle user registration."""
+    username = username_entry.get()
+    password = password_entry.get()
+
+    if username in users_data:
+        messagebox.showerror("Registration Error", "Username already exists.")
+        return
+    
+    users_data[username] = password
+    save_user_data()
+    messagebox.showinfo("Registration Success", "Registration successful! Please log in.")
+    login_screen()
+
+def on_login():
+    """Handle user login."""
+    username = username_entry.get()
+    password = password_entry.get()
+
+    if username not in users_data or users_data[username] != password:
+        messagebox.showerror("Login Error", "Invalid username or password.")
+        return
+    
+    global current_user
+    current_user = username
+    load_entries_data()
+    main_dashboard()
+
+def login_screen():
+    """Display login screen."""
+    global username_entry, password_entry
+    login_window = tk.Tk()
+    login_window.title("Login / Register")
+
+    tk.Label(login_window, text="Username:").grid(row=0, column=0)
+    username_entry = tk.Entry(login_window)
+    username_entry.grid(row=0, column=1)
+
+    tk.Label(login_window, text="Password:").grid(row=1, column=0)
+    password_entry = tk.Entry(login_window, show="*")
+    password_entry.grid(row=1, column=1)
+
+    tk.Button(login_window, text="Login", command=on_login).grid(row=2, column=0, columnspan=2)
+    tk.Button(login_window, text="Register", command=on_register).grid(row=3, column=0, columnspan=2)
+
+    login_window.mainloop()
+
+def on_add_entry():
+    """Add a new diary entry."""
+    mood = mood_scale.get()
+    notes = notes_text.get("1.0", tk.END).strip()
+    date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if current_user not in entries_data:
+        entries_data[current_user] = []
+
+    entries_data[current_user].append({'date': date, 'mood': mood, 'notes': notes})
+    save_entries_data()
+
+    mood_scale.set(5)  # Reset mood scale
+    notes_text.delete("1.0", tk.END)  # Clear the notes
+    messagebox.showinfo("Entry Saved", "Your diary entry has been saved!")
+
+def on_view_entries():
+    """Display a list of previous entries."""
+    entries_list.delete(0, tk.END)
+
+    for entry in entries_data.get(current_user, []):
+        entries_list.insert(tk.END, f"{entry['date']} - Mood: {entry['mood']}")
+
+def on_entry_selected(event):
+    """Show full details of the selected diary entry."""
+    selected = entries_list.curselection()
+    if not selected:
+        return
+
+    entry = entries_data[current_user][selected[0]]
+    details_text.delete("1.0", tk.END)
+    details_text.insert(tk.END, f"Date: {entry['date']}\nMood: {entry['mood']}\nNotes: {entry['notes']}")
+
+    # Update the Edit Entry button to allow modification of the selected entry
+    edit_button.config(state=tk.NORMAL)
+    delete_button.config(state=tk.NORMAL)
+    selected_entry_index.set(selected[0])
+
+def on_edit_entry():
+    """Edit the selected diary entry."""
+    selected_index = selected_entry_index.get()
+    if selected_index is None or selected_index >= len(entries_data[current_user]):
+        messagebox.showerror("Edit Error", "Please select an entry first.")
+        return
+
+    # Retrieve the entry details for editing
+    entry = entries_data[current_user][selected_index]
+    mood_scale.set(entry['mood'])
+    notes_text.delete("1.0", tk.END)
+    notes_text.insert(tk.END, entry['notes'])
+
+    edit_button.config(state=tk.DISABLED)  # Disable the edit button while editing
+    delete_button.config(state=tk.DISABLED)  # Disable the delete button while editing
+
+    # Replace the entry in the list with the new values once saved
+    def save_edited_entry():
+        new_mood = mood_scale.get()
+        new_notes = notes_text.get("1.0", tk.END).strip()
+
+        # Save the updated entry back to the list
+        entries_data[current_user][selected_index] = {'date': entry['date'], 'mood': new_mood, 'notes': new_notes}
+        save_entries_data()
+
+        mood_scale.set(5)  # Reset mood scale
+        notes_text.delete("1.0", tk.END)  # Clear the notes
+        messagebox.showinfo("Entry Edited", "Your diary entry has been updated!")
+        edit_button.config(state=tk.NORMAL)
+        delete_button.config(state=tk.NORMAL)
+        on_view_entries()  # Refresh the list of entries
+
+    # Confirm and save changes
+    tk.Button(dashboard_frame, text="Save Changes", command=save_edited_entry).grid(row=8, column=0, columnspan=2)
+
+def on_delete_entry():
+    """Delete the selected diary entry."""
+    selected_index = selected_entry_index.get()
+    if selected_index is None or selected_index >= len(entries_data[current_user]):
+        messagebox.showerror("Delete Error", "Please select an entry first.")
+        return
+
+    confirm = messagebox.askyesno("Delete Entry", "Are you sure you want to delete this entry?")
+    if confirm:
+        del entries_data[current_user][selected_index]
+        save_entries_data()
+        messagebox.showinfo("Entry Deleted", "Your diary entry has been deleted.")
+        on_view_entries()  # Refresh the list of entries
+
+def on_search():
+    """Search entries by mood or date."""
+    search_term = search_entry.get()
+    search_results = []
+
+    for entry in entries_data.get(current_user, []):
+        if search_term.lower() in entry['date'].lower() or search_term in str(entry['mood']):
+            search_results.append(f"{entry['date']} - Mood: {entry['mood']}")
+
+    entries_list.delete(0, tk.END)
+    for result in search_results:
+        entries_list.insert(tk.END, result)
+
+def plot_mood_trends():
+    """Plot mood trends using Matplotlib."""
+    moods = [entry['mood'] for entry in entries_data.get(current_user, [])]
+    dates = [entry['date'] for entry in entries_data.get(current_user, [])]
+
+    if moods:
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot(dates, moods, marker='o')
+        ax.set_title('Mood Trend Over Time')
+        ax.set_xlabel('Date')
+        ax.set_ylabel('Mood Score')
+        ax.tick_params(axis='x', rotation=45)
+
+        canvas = FigureCanvasTkAgg(fig, master=dashboard_frame)
+        canvas.get_tk_widget().grid(row=4, column=0, columnspan=2)
+        canvas.draw()
+
+def main_dashboard():
+    """Display the main dashboard after login."""
+    dashboard_window = tk.Tk()
+    dashboard_window.title(f"Welcome {current_user}")
+
+    global mood_scale, notes_text, entries_list, search_entry, details_text, dashboard_frame, edit_button, delete_button, selected_entry_index
+
+    dashboard_frame = tk.Frame(dashboard_window)
+    dashboard_frame.pack()
+
+    # Welcome Message
+    tk.Label(dashboard_frame, text=f"Welcome, {current_user}!", font=("Helvetica", 14)).grid(row=0, column=0, columnspan=2)
+
+    # Mood Entry Form
+    tk.Label(dashboard_frame, text="Mood (1-10):").grid(row=1, column=0)
+    mood_scale = tk.Scale(dashboard_frame, from_=1, to=10, orient=tk.HORIZONTAL)
+    mood_scale.set(5)  # Default mood value
+    mood_scale.grid(row=1, column=1)
+
+    tk.Label(dashboard_frame, text="Diary Notes:").grid(row=2, column=0)
+    notes_text = tk.Text(dashboard_frame, height=4, width=30)
+    notes_text.grid(row=2, column=1)
+
+    tk.Button(dashboard_frame, text="Save Entry", command=on_add_entry).grid(row=3, column=0, columnspan=2)
+
+    # View Entries Section
+    tk.Button(dashboard_frame, text="View Entries", command=on_view_entries).grid(row=4, column=0)
+    tk.Button(dashboard_frame, text="Search", command=on_search).grid(row=4, column=1)
+
+    search_entry = tk.Entry(dashboard_frame)
+    search_entry.grid(row=5, column=0, columnspan=2)
+
+    entries_list = tk.Listbox(dashboard_frame, height=10, width=50)
+    entries_list.grid(row=6, column=0, columnspan=2)
+    entries_list.bind("<ButtonRelease-1>", on_entry_selected)
+
+    details_text = tk.Text(dashboard_frame, height=6, width=50)
+    details_text.grid(row=7, column=0, columnspan=2)
+
+    edit_button = tk.Button(dashboard_frame, text="Edit Entry", command=on_edit_entry, state=tk.DISABLED)
+    edit_button.grid(row=8, column=0)
+    delete_button = tk.Button(dashboard_frame, text="Delete Entry", command=on_delete_entry, state=tk.DISABLED)
+    delete_button.grid(row=8, column=1)
+
+    selected_entry_index = tk.IntVar(value=None)
+
+    plot_mood_trends()
+
+    dashboard_window.mainloop()
+
+# Load existing user and entry data
+load_user_data()
+
+# Start the login screen
+login_screen()
